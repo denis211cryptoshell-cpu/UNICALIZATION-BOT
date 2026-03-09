@@ -39,7 +39,7 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
     """
     bot = self.bot
     
-    # Запускаем ВСЮ асинхронную работу в одном event loop
+    # Запускаем ВСЮ асинхронную работу в НОВОМ event loop
     async def run_task():
         input_path = None
         output_path = None
@@ -137,8 +137,12 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
                     except Exception:
                         pass
 
-    # Запускаем в одном event loop
-    return asyncio.run(run_task())
+    # Создаём НОВЫЙ event loop для каждого вызова
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(run_task())
+    finally:
+        loop.close()
 
 
 @celery_app.task(name="worker.tasks.check_subscriptions")
