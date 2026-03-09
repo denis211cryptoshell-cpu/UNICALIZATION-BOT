@@ -22,4 +22,4 @@ COPY . .
 RUN mkdir -p /app/storage/input /app/storage/output
 
 # Запуск Celery воркера
-CMD ["celery", "-A", "worker.celery", "worker", "--loglevel=info", "--queue=video_processing", "--concurrency=4"]
+CMD ["celery", "-A", "worker.celery", "worker", "--loglevel=info", "--queues=video_processing", "--concurrency=4"]
