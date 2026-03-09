@@ -29,59 +29,51 @@ class VideoUniquer:
     def _apply_video_filters(self, input_file: Path, output_file: Path) -> bool:
         """
         Применение фильтров для уникализации видео.
-
-        Фильтры:
-        - Небольшое изменение яркости
-        - Небольшое изменение контраста
-        - Небольшое изменение насыщенности
-        - Добавление небольшого шума
-        - Изменение скорости на небольшой процент
         """
         try:
             # Генерация случайных параметров для уникализации
-            brightness = 0.02  # Небольшое изменение яркости (-0.5 to 0.5)
-            contrast = 1.02    # Небольшое изменение контраста (0 to 2)
-            saturation = 1.05  # Небольшое изменение насыщенности (0 to 3)
-            noise_strength = 20  # Сила шума (0 to 100)
-            speed = 1.0  # Скорость воспроизведения
+            brightness = 0.02
+            contrast = 1.02
+            saturation = 1.05
+            noise_strength = 20
+            speed = 1.0
 
-            # Построение цепочки фильтров
+            # Построение цепочки фильтров (правильный синтаксис для ffmpeg-python)
             video_filters = (
                 f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation},"
                 f"noise=alls={noise_strength}:allf=t+u"
             )
 
-            # Запуск FFmpeg
-            (
-                ffmpeg
-                .input(str(input_file))
-                .video
-                .filter_(video_filters)
-                .setpts(f"{1/speed}*PTS")
-                .output(
-                    str(output_file),
-                    **{
-                        "c:v": "libx264",
-                        "preset": "fast",
-                        "crf": "23",
-                        "c:a": "aac",
-                        "b:a": "128k",
-                    }
-                )
-                .overwrite_output()
-                .run(
-                    cmd=self.ffmpeg_path,
-                    capture_stdout=True,
-                    capture_stderr=True,
-                )
+            # Запуск FFmpeg через subprocess (прямой вызов)
+            import subprocess
+            
+            cmd = [
+                self.ffmpeg_path,
+                "-i", str(input_file),
+                "-vf", video_filters,
+                "-setpts", f"{1/speed}*PTS",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-y",  # overwrite output
+                str(output_file)
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True
             )
+            
+            if result.returncode != 0:
+                logger.error(f"FFmpeg error: {result.stderr}")
+                return False
 
             logger.info(f"Видео успешно обработано: {output_file}")
             return True
 
-        except ffmpeg.Error as e:
-            logger.error(f"Ошибка FFmpeg: {e.stderr.decode() if e.stderr else e}")
-            return False
         except Exception as e:
             logger.exception(f"Неожиданная ошибка при обработке видео: {e}")
             return False
