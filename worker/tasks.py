@@ -10,6 +10,7 @@ from services.video_uniquer import video_uniquer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram import Bot
+from aiogram.types import FSInputFile
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +101,13 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
                 await session.commit()
 
                 # Отправляем результат пользователю
-                with open(output_path, "rb") as f:
-                    await bot.send_video(
-                        chat_id=user_id,
-                        video=f,
-                        caption="✅ <b>Видео уникализировано!</b>\n\n"
-                                "Файл готов к использованию.",
-                    )
+                video_file = FSInputFile(output_path)
+                await bot.send_video(
+                    chat_id=user_id,
+                    video=video_file,
+                    caption="✅ <b>Видео уникализировано!</b>\n\n"
+                            "Файл готов к использованию.",
+                )
                 logger.info(f"Задача {task_id} завершена успешно. Видео отправлено пользователю {user_id}")
 
                 return {"status": "completed", "output_file": str(output_path)}
