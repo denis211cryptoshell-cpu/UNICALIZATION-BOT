@@ -47,11 +47,17 @@ class VideoUniquer:
             # Запуск FFmpeg через subprocess (прямой вызов)
             import subprocess
             
+            # Полный filter_complex включает все видео фильтры
+            filter_complex = (
+                f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation},"
+                f"noise=alls={noise_strength}:allf=t+u,"
+                f"setpts={1/speed}*PTS"
+            )
+            
             cmd = [
                 self.ffmpeg_path,
                 "-i", str(input_file),
-                "-vf", video_filters,
-                "-setpts", f"{1/speed}*PTS",
+                "-filter_complex", filter_complex,
                 "-c:v", "libx264",
                 "-preset", "fast",
                 "-crf", "23",
