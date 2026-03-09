@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from celery import Task
 from worker.celery import celery_app
-from core.database import ProcessingTask, User, async_session_maker, SubscriptionStatus
+from core.database import ProcessingTask, User, async_session_maker, SubscriptionStatus, init_db
 from core.config import settings
 from services.video_uniquer import video_uniquer
 from sqlalchemy import select, update
@@ -25,6 +25,27 @@ class BotTask(Task):
         return self._bot
 
 
+async def _update_task_status(task_id: int, status: str, **kwargs):
+    """Асинхронное обновление статуса задачи."""
+    async with async_session_maker() as session:
+        values = {"status": status, **kwargs}
+        await session.execute(
+            update(ProcessingTask)
+            .where(ProcessingTask.id == task_id)
+            .values(values)
+        )
+        await session.commit()
+
+
+async def _get_user(telegram_id: int):
+    """Асинхронное получение пользователя."""
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
+
 @celery_app.task(
     base=BotTask,
     bind=True,
@@ -34,12 +55,6 @@ class BotTask(Task):
 def process_video(self, task_id: int, user_id: int, input_file_id: str, input_file_name: str):
     """
     Задача обработки видео.
-
-    Args:
-        task_id: ID задачи в базе данных.
-        user_id: ID пользователя в Telegram.
-        input_file_id: File ID видео в Telegram.
-        input_file_name: Имя входного файла.
     """
     bot = self.bot
     input_path = None
@@ -47,23 +62,14 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
 
     try:
         # Обновляем статус задачи
-        with async_session_maker() as session:
-            session.execute(
-                update(ProcessingTask)
-                .where(ProcessingTask.id == task_id)
-                .values(
-                    status="processing",
-                    started_at=datetime.utcnow(),
-                )
-            )
-            session.commit()
+        asyncio.run(_update_task_status(task_id, "processing", started_at=datetime.utcnow()))
 
         logger.info(f"Начало обработки задачи {task_id} для пользователя {user_id}")
 
         # Скачиваем файл от Telegram
         input_path = settings.input_path / f"{task_id}_{input_file_name}"
 
-        # Скачиваем файл через Bot API (в async контексте)
+        # Скачиваем файл через Bot API
         async def download_file():
             file = await bot.get_file(input_file_id)
             await bot.download_file(file.file_path, input_path)
@@ -80,30 +86,24 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
         logger.info(f"Видео обработано: {output_path}")
 
         # Обновляем задачу в БД
-        with async_session_maker() as session:
-            session.execute(
-                update(ProcessingTask)
-                .where(ProcessingTask.id == task_id)
-                .values(
-                    status="completed",
-                    completed_at=datetime.utcnow(),
-                    output_file_name=output_path.name,
-                )
-            )
+        asyncio.run(_update_task_status(
+            task_id, "completed",
+            completed_at=datetime.utcnow(),
+            output_file_name=output_path.name,
+        ))
 
-            # Обновляем статистику пользователя
-            user_result = session.execute(
-                select(User).where(User.telegram_id == user_id)
-            )
-            user = user_result.scalar_one_or_none()
-
+        # Обновляем статистику пользователя
+        async def update_user_stats():
+            user = await _get_user(user_id)
             if user:
                 user.videos_processed += 1
                 if user.subscription_status == SubscriptionStatus.NONE:
                     user.subscription_status = SubscriptionStatus.TRIAL
-                    user.subscription_expires_at = datetime.utcnow() + datetime.timedelta(days=7)
+                    user.subscription_expires_at = datetime.utcnow() + timedelta(days=7)
+                async with async_session_maker() as session:
+                    await session.commit()
 
-            session.commit()
+        asyncio.run(update_user_stats())
 
         # Отправляем результат пользователю
         async def send_video():
@@ -124,17 +124,11 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
         logger.exception(f"Ошибка обработки задачи {task_id}: {e}")
 
         # Обновляем статус задачи на failed
-        with async_session_maker() as session:
-            session.execute(
-                update(ProcessingTask)
-                .where(ProcessingTask.id == task_id)
-                .values(
-                    status="failed",
-                    completed_at=datetime.utcnow(),
-                    error_message=str(e),
-                )
-            )
-            session.commit()
+        asyncio.run(_update_task_status(
+            task_id, "failed",
+            completed_at=datetime.utcnow(),
+            error_message=str(e),
+        ))
 
         return {"status": "failed", "error": str(e)}
 
@@ -145,9 +139,6 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
                 input_path.unlink()
             except Exception:
                 pass
-
-        # Закрываем сессию бота
-        # await bot.session.close()
 
 
 @celery_app.task(name="worker.tasks.check_subscriptions")
