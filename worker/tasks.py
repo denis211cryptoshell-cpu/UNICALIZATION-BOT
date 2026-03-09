@@ -63,9 +63,19 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
                 input_path = settings.input_path / f"{task_id}_{input_file_name}"
 
                 # Скачиваем файл через Bot API
-                file = await bot.get_file(input_file_id)
-                await bot.download_file(file.file_path, input_path)
-                logger.info(f"Файл скачан: {input_path}")
+                try:
+                    file = await bot.get_file(input_file_id)
+                    
+                    # Проверка размера файла (Telegram лимит 20 МБ для ботов)
+                    max_file_size = 20 * 1024 * 1024  # 20 МБ в байтах
+                    if file.file_size and file.file_size > max_file_size:
+                        raise Exception(f"Файл слишком большой ({file.file_size / 1024 / 1024:.2f} МБ). Максимум 20 МБ")
+                    
+                    await bot.download_file(file.file_path, input_path)
+                    logger.info(f"Файл скачан: {input_path}")
+                except Exception as e:
+                    logger.error(f"Ошибка скачивания файла: {e}")
+                    raise
 
                 # Уникализация видео
                 output_path = await video_uniquer.process(input_path)

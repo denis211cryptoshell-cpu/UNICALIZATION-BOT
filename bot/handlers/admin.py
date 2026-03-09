@@ -1,11 +1,12 @@
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from datetime import datetime
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from core.config import settings
-from core.database import User, ProcessingTask, Channel, async_session_maker
+from core.database import User, ProcessingTask, Channel, async_session_maker, SubscriptionStatus
 from sqlalchemy import select, func
 from services.subscription import parse_channel_username
 
@@ -108,7 +109,18 @@ async def cb_admin_users(callback: CallbackQuery):
         if user.subscription_expires_at:
             text += f" (до {user.subscription_expires_at.strftime('%d.%m')})"
 
-    await callback.message.edit_text(text)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Обновить",
+                    callback_data="admin_users",
+                )
+            ],
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -203,7 +215,6 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     sent_count = 0
     failed_count = 0
 
-    from aiogram import Bot
     bot = Bot(token=settings.BOT_TOKEN)
 
     for user in users:
@@ -235,8 +246,6 @@ async def cb_admin_channels(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer()
         return
-
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
     async with async_session_maker() as session:
         result = await session.execute(select(Channel))
@@ -346,7 +355,6 @@ async def handle_channel_link(message: Message, state: FSMContext):
 
     await state.update_data(channel_username=username)
 
-    from aiogram import Bot
     bot = Bot(token=settings.BOT_TOKEN)
 
     try:
@@ -435,8 +443,6 @@ async def cb_admin_channel_toggle(callback: CallbackQuery):
         result = await session.execute(select(Channel))
         channels = result.scalars().all()
 
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
         text = "📺 <b>Каналы подписки</b>\n\n"
         keyboard_buttons = []
         
@@ -505,8 +511,6 @@ async def cb_admin_channel_delete(callback: CallbackQuery):
         # Обновляем список каналов
         result = await session.execute(select(Channel))
         channels = result.scalars().all()
-
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
         if not channels:
             text = (
