@@ -77,8 +77,11 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
         asyncio.run(download_file())
         logger.info(f"Файл скачан: {input_path}")
 
-        # Уникализация видео
-        output_path = video_uniquer.process(input_path)
+        # Уникализация видео (async функция)
+        async def process_video_async():
+            return await video_uniquer.process(input_path)
+
+        output_path = asyncio.run(process_video_async())
 
         if output_path is None:
             raise Exception("Не удалось обработать видео")
