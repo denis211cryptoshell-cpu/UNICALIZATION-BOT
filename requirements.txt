@@ -1,0 +1,26 @@
+# Telegram Bot
+aiogram==3.5.0
+aiofiles==23.2.1
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.29.0
+aiosqlite==0.19.0
+alembic==1.13.1
+
+# Redis & Celery
+redis==5.0.1
+celery==5.3.6
+flower==2.0.1
+
+# Video Processing
+ffmpeg-python==0.2.0
+
+# Configuration
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Utils
+aiohttp==3.9.1
+pillow==10.2.0
