@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 from celery import Task
@@ -61,14 +62,14 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
 
         # Скачиваем файл от Telegram
         input_path = settings.input_path / f"{task_id}_{input_file_name}"
-        
-        # TODO: Реализовать скачивание файла через Bot API
-        # file = await bot.get_file(input_file_id)
-        # await bot.download_file(file.file_path, input_path)
-        
-        # Для демонстрации создаём заглушку
-        input_path.touch()
-        logger.info(f"Файл загружен: {input_path}")
+
+        # Скачиваем файл через Bot API (в async контексте)
+        async def download_file():
+            file = await bot.get_file(input_file_id)
+            await bot.download_file(file.file_path, input_path)
+
+        asyncio.run(download_file())
+        logger.info(f"Файл скачан: {input_path}")
 
         # Уникализация видео
         output_path = video_uniquer.process(input_path)
@@ -105,8 +106,17 @@ def process_video(self, task_id: int, user_id: int, input_file_id: str, input_fi
             session.commit()
 
         # Отправляем результат пользователю
-        # TODO: Отправить файл через bot.send_video()
-        logger.info(f"Задача {task_id} завершена успешно")
+        async def send_video():
+            with open(output_path, "rb") as f:
+                await bot.send_video(
+                    chat_id=user_id,
+                    video=f,
+                    caption="✅ <b>Видео уникализировано!</b>\n\n"
+                            "Файл готов к использованию.",
+                )
+
+        asyncio.run(send_video())
+        logger.info(f"Задача {task_id} завершена успешно. Видео отправлено пользователю {user_id}")
 
         return {"status": "completed", "output_file": str(output_path)}
 

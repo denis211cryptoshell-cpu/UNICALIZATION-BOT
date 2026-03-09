@@ -192,13 +192,20 @@ async def handle_video(message: Message, state: FSMContext):
         )
         await session.commit()
 
-    # TODO: Здесь будет запуск задачи Celery
-    logger.info(f"Видео от пользователя {message.from_user.id} готово к обработке. Task ID: {task_id}")
+    # Запускаем Celery задачу
+    try:
+        from worker.tasks import process_video
+        process_video.delay(task_id, message.from_user.id, video.file_id, video.file_name or "video.mp4")
+        logger.info(f"Задача Celery запущена. Task ID: {task_id}")
+    except Exception as e:
+        logger.error(f"Ошибка запуска Celery: {e}")
+        await message.answer(f"❌ Ошибка запуска обработки: {e}")
+        return
 
     await message.answer(
-        "⚠️ <b>Функция обработки в разработке</b>\n\n"
-        "Задача создана в базе данных. "
-        "Для полноценной работы необходимо настроить Celery worker."
+        "✅ <b>Задача запущена!</b>\n\n"
+        "Ожидайте завершения обработки.\n"
+        "Мы уведомим вас, когда видео будет готово."
     )
 
 
