@@ -9,7 +9,14 @@ from core.database import User, SubscriptionStatus, ProcessingTask, async_sessio
 from sqlalchemy import select
 from datetime import datetime, timedelta
 from services.subscription import check_subscription, clear_subscription_cache
-from bot.keyboards.inline import get_start_keyboard, get_subscribe_keyboard
+from bot.keyboards.inline import (
+    get_start_keyboard,
+    get_subscribe_keyboard,
+    get_stats_keyboard,
+    get_back_keyboard,
+    get_upload_keyboard,
+    get_admin_back_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +125,7 @@ async def cmd_stats(message: Message):
         f"💎 Подписка: {status_text}"
     )
 
-    await message.answer(text)
+    await message.answer(text, reply_markup=get_stats_keyboard())
 
 
 @router.message(Command("cancel"))
@@ -138,10 +145,10 @@ async def cb_start_processing(callback: CallbackQuery, state: FSMContext):
         "📹 <b>Отправьте видео для уникализации</b>\n\n"
         f"Максимальный размер: {settings.MAX_VIDEO_SIZE_MB} МБ\n"
         "Поддерживаемые форматы: MP4, AVI, MOV, MKV\n\n"
-        "Или нажмите /cancel для отмены."
+        "Или нажмите кнопку ниже для отмены."
     )
 
-    await callback.message.edit_text(text)
+    await callback.message.edit_text(text, reply_markup=get_upload_keyboard())
     await callback.answer()
 
 
@@ -286,5 +293,56 @@ async def cb_my_stats(callback: CallbackQuery):
         f"📥 В очереди: {total - completed}"
     )
 
-    await callback.message.answer(text)
+    await callback.message.answer(text, reply_markup=get_stats_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "my_help")
+async def cb_my_help(callback: CallbackQuery):
+    """Показ справки."""
+    text = (
+        "ℹ️ <b>Помощь</b>\n\n"
+        "📹 <b>Уникализация видео:</b>\n"
+        "Отправьте видеофайл, и бот обработает его.\n\n"
+        "📊 <b>Статистика:</b>\n"
+        "Узнайте количество обработанных видео.\n\n"
+        "⚙️ <b>Команды:</b>\n"
+        "/start - Запустить бота\n"
+        "/help - Показать эту справку\n"
+        "/stats - Моя статистика\n"
+        "/cancel - Отменить текущее действие"
+    )
+    await callback.message.answer(text, reply_markup=get_back_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_start")
+async def cb_back_to_start(callback: CallbackQuery, state: FSMContext):
+    """Возврат в главное меню."""
+    await state.clear()
+    
+    text = (
+        f"👋 <b>Привет, {callback.from_user.first_name}!</b>\n\n"
+        "Я бот для уникализации видео.\n"
+        "Отправь мне видео, и я сделаю его уникальным.\n\n"
+        "📹 <b>Как это работает:</b>\n"
+        "1. Отправь видео\n"
+        "2. Дождись обработки\n"
+        "3. Получи уникализированное видео\n\n"
+        "Нажми кнопку ниже, чтобы начать."
+    )
+
+    await callback.message.edit_text(text, reply_markup=get_start_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_upload")
+async def cb_cancel_upload(callback: CallbackQuery, state: FSMContext):
+    """Отмена загрузки видео."""
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Действие отменено.\n\n"
+        "Выберите действие:",
+        reply_markup=get_start_keyboard()
+    )
     await callback.answer()

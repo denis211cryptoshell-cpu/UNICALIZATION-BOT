@@ -9,6 +9,11 @@ from core.config import settings
 from core.database import User, ProcessingTask, Channel, async_session_maker, SubscriptionStatus
 from sqlalchemy import select, func
 from services.subscription import parse_channel_username
+from bot.keyboards.inline import (
+    get_admin_keyboard,
+    get_admin_back_keyboard,
+    get_back_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,37 +46,23 @@ async def cmd_admin(message: Message):
         "Выберите действие:"
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="👥 Пользователи",
-                    callback_data="admin_users",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📊 Статистика",
-                    callback_data="admin_stats",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📢 Рассылка",
-                    callback_data="admin_broadcast",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📺 Каналы подписки",
-                    callback_data="admin_channels",
-                )
-            ],
-        ]
+    await message.answer(text, reply_markup=get_admin_keyboard())
+
+
+@router.callback_query(F.data == "admin")
+async def cb_admin(callback: CallbackQuery):
+    """Возврат в главное меню админ-панели."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+
+    text = (
+        "🔧 <b>Панель администратора</b>\n\n"
+        "Выберите действие:"
     )
 
-    await message.answer(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=get_admin_keyboard())
+    await callback.answer()
 
 
 @router.callback_query(F.data == "admin_users")
@@ -115,7 +106,11 @@ async def cb_admin_users(callback: CallbackQuery):
                 InlineKeyboardButton(
                     text="🔄 Обновить",
                     callback_data="admin_users",
-                )
+                ),
+                InlineKeyboardButton(
+                    text="🏠 Главное меню",
+                    callback_data="back_to_start",
+                ),
             ],
         ]
     )
@@ -174,7 +169,22 @@ async def cb_admin_stats(callback: CallbackQuery):
         f"🤖 Статус: {'🟢 Работает' if total_users > 0 else '🔴 Ожидает пользователей'}"
     )
 
-    await callback.message.edit_text(text)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Обновить",
+                    callback_data="admin_stats",
+                ),
+                InlineKeyboardButton(
+                    text="🏠 Главное меню",
+                    callback_data="back_to_start",
+                ),
+            ],
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -191,10 +201,25 @@ async def cb_admin_broadcast(callback: CallbackQuery, state: FSMContext):
         "📢 <b>Рассылка сообщений</b>\n\n"
         "Отправьте сообщение, которое будет отправлено всем пользователям.\n\n"
         "Поддерживается HTML-разметка.\n"
-        "Или нажмите /cancel для отмены."
+        "Или нажмите кнопку ниже для отмены."
     )
 
-    await callback.message.edit_text(text)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="❌ Отмена",
+                    callback_data="admin",
+                ),
+                InlineKeyboardButton(
+                    text="🏠 Главное меню",
+                    callback_data="back_to_start",
+                ),
+            ],
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -231,10 +256,26 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
 
     await bot.session.close()
 
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔧 В админ-панель",
+                    callback_data="admin",
+                ),
+                InlineKeyboardButton(
+                    text="🏠 Главное меню",
+                    callback_data="back_to_start",
+                ),
+            ],
+        ]
+    )
+
     await message.answer(
         f"✅ <b>Рассылка завершена</b>\n\n"
         f"Отправлено: {sent_count}\n"
-        f"Не доставлено: {failed_count}"
+        f"Не доставлено: {failed_count}",
+        reply_markup=keyboard
     )
 
 
@@ -264,6 +305,12 @@ async def cb_admin_channels(callback: CallbackQuery):
                         text="➕ Добавить канал",
                         callback_data="admin_channel_add",
                     )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
                 ],
             ]
         )
@@ -302,7 +349,11 @@ async def cb_admin_channels(callback: CallbackQuery):
                     InlineKeyboardButton(
                         text="🔄 Обновить",
                         callback_data="admin_channels",
-                    )
+                    ),
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
                 ],
             ]
         )
@@ -327,10 +378,25 @@ async def cb_admin_channel_add(callback: CallbackQuery, state: FSMContext):
         "- @username\n"
         "- username\n\n"
         "⚠️ <b>Важно:</b> Бот должен быть администратором в канале!\n\n"
-        "Или нажмите /cancel для отмены."
+        "Или нажмите кнопку ниже для отмены."
     )
 
-    await callback.message.edit_text(text)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="❌ Отмена",
+                    callback_data="admin_channels",
+                ),
+                InlineKeyboardButton(
+                    text="🏠 Главное меню",
+                    callback_data="back_to_start",
+                ),
+            ],
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
 
@@ -343,13 +409,24 @@ async def handle_channel_link(message: Message, state: FSMContext):
     username = parse_channel_username(message.text)
 
     if not username:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
+                ],
+            ]
+        )
         await message.answer(
             "❌ Неверный формат канала.\n\n"
             "Отправьте ссылку в формате:\n"
             "- t.me/username\n"
             "- @username\n"
             "- username\n\n"
-            "Или нажмите /cancel для отмены."
+            "Или нажмите кнопку ниже для отмены.",
+            reply_markup=keyboard
         )
         return
 
@@ -362,15 +439,36 @@ async def handle_channel_link(message: Message, state: FSMContext):
         chat = await bot.get_chat(f"@{username}")
 
         if chat.type not in ("channel", "supergroup"):
-            await message.answer("❌ Это не канал. Отправьте ссылку на канал.")
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🏠 Главное меню",
+                            callback_data="back_to_start",
+                        ),
+                    ],
+                ]
+            )
+            await message.answer("❌ Это не канал. Отправьте ссылку на канал.", reply_markup=keyboard)
             return
 
         # Проверяем что бот админ в канале
         member = await bot.get_chat_member(chat.id, bot.id)
         if member.status not in ("administrator", "creator"):
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🏠 Главное меню",
+                            callback_data="back_to_start",
+                        ),
+                    ],
+                ]
+            )
             await message.answer(
                 "❌ Бот не является администратором этого канала.\n\n"
-                "Добавьте бота в канал с правами администратора."
+                "Добавьте бота в канал с правами администратора.",
+                reply_markup=keyboard
             )
             return
 
@@ -398,17 +496,43 @@ async def handle_channel_link(message: Message, state: FSMContext):
 
         await state.clear()
 
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📺 Каналы",
+                        callback_data="admin_channels",
+                    ),
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
+                ],
+            ]
+        )
+
         await message.answer(
             f"✅ <b>Канал добавлен!</b>\n\n"
             f"Название: {chat.title}\n"
             f"Username: @{username}\n"
             f"ID: <code>{chat.id}</code>\n\n"
-            "Теперь пользователи должны будут подписаться на этот канал."
+            "Теперь пользователи должны будут подписаться на этот канал.",
+            reply_markup=keyboard
         )
 
     except Exception as e:
         logger.error(f"Ошибка добавления канала: {e}")
-        await message.answer(f"❌ Ошибка: {e}")
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
+                ],
+            ]
+        )
+        await message.answer(f"❌ Ошибка: {e}", reply_markup=keyboard)
 
     finally:
         await bot.session.close()
@@ -476,7 +600,11 @@ async def cb_admin_channel_toggle(callback: CallbackQuery):
                     InlineKeyboardButton(
                         text="🔄 Обновить",
                         callback_data="admin_channels",
-                    )
+                    ),
+                    InlineKeyboardButton(
+                        text="🏠 Главное меню",
+                        callback_data="back_to_start",
+                    ),
                 ],
             ]
         )
@@ -526,17 +654,23 @@ async def cb_admin_channel_delete(callback: CallbackQuery):
                             callback_data="admin_channel_add",
                         )
                     ],
+                    [
+                        InlineKeyboardButton(
+                            text="🏠 Главное меню",
+                            callback_data="back_to_start",
+                        ),
+                    ],
                 ]
             )
         else:
             text = "📺 <b>Каналы подписки</b>\n\n"
             keyboard_buttons = []
-            
+
             for i, ch in enumerate(channels, 1):
                 status = "✅" if ch.is_active else "❌"
                 text += f"{status} <code>{ch.username}</code> - {ch.title or 'Без названия'}\n"
                 text += f"   ID: <code>{ch.channel_id}</code>\n\n"
-                
+
                 toggle_text = "🚫 Выкл" if ch.is_active else "✅ Вкл"
                 keyboard_buttons.append([
                     InlineKeyboardButton(
@@ -562,7 +696,11 @@ async def cb_admin_channel_delete(callback: CallbackQuery):
                         InlineKeyboardButton(
                             text="🔄 Обновить",
                             callback_data="admin_channels",
-                        )
+                        ),
+                        InlineKeyboardButton(
+                            text="🏠 Главное меню",
+                            callback_data="back_to_start",
+                        ),
                     ],
                 ]
             )
